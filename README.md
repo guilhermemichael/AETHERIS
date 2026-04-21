@@ -65,6 +65,16 @@ npm run dev --workspace frontend
 
 The frontend expects `VITE_API_BASE_URL=http://127.0.0.1:8000` by default.
 
+### Run both together
+
+```bash
+cd C:\Users\guilh\PROJETOS\AETHERIS
+npm install
+npm run dev
+```
+
+This starts the FastAPI backend on `http://127.0.0.1:8000` and the frontend on `http://127.0.0.1:5173` in parallel.
+
 ## Testing
 
 ### Backend
