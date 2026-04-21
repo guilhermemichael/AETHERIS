@@ -81,7 +81,6 @@ input {
   pointer-events: none;
 }
 
-.hero-copy,
 .detail-panel,
 .status-bar,
 .consent-panel {
@@ -90,8 +89,14 @@ input {
 }
 
 .hero-copy {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
   max-width: min(42rem, calc(100% - 3rem));
+  max-height: calc(100dvh - 6rem);
   padding: 9vh 6vw 0;
+  overflow: hidden;
 }
 
 .eyebrow {
