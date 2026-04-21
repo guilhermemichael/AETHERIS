@@ -5,7 +5,11 @@ import { RenderViewport } from "./RenderViewport";
 import type { ConsentState, SessionInitRequest } from "./types";
 import { siteManifest } from "../content/siteManifest";
 import { createPointerSnapshot, decayLocalInput } from "../biometrics/localInput";
-import { startMicrophoneCapture } from "../biometrics/microphone";
+import {
+  explainMicrophoneError,
+  getMicrophoneCapability,
+  startMicrophoneCapture,
+} from "../biometrics/microphone";
 import { buildConsentPayload } from "../biometrics/privacy";
 import { ReactiveSoundscape } from "../render/audio";
 import { useSessionStore } from "../state/sessionStore";
@@ -29,12 +33,21 @@ export function App() {
   const microphoneRef = useRef<{ stop: () => void } | null>(null);
   const soundscapeRef = useRef<ReactiveSoundscape | null>(null);
   const shellRef = useRef<HTMLDivElement | null>(null);
+  const bootstrapStartedRef = useRef(false);
+  const consentTransitionRef = useRef<number | null>(null);
+  const microphoneCapability = useMemo(() => getMicrophoneCapability(), []);
 
   const { sessionId, consent, hydrateFromInit, applyConsent } = useSessionStore();
   const { worldState, localInput, mergeLocalInput, setWorldState } = useWorldStore();
   const { phase, activeNodeId, brush, setActiveNodeId, setBrush, setPhase } = useUiStore();
 
   useEffect(() => {
+    if (bootstrapStartedRef.current) {
+      return;
+    }
+
+    bootstrapStartedRef.current = true;
+
     startTransition(() => {
       void bootstrap();
     });
@@ -45,11 +58,18 @@ export function App() {
         hydrateFromInit(response);
         setWorldState(response.world_state);
         setPhase("pulse");
-        window.setTimeout(() => setPhase("consent"), 1400);
+        consentTransitionRef.current = window.setTimeout(() => setPhase("consent"), 1400);
       } catch (caughtError) {
         setError(caughtError instanceof Error ? caughtError.message : "Unknown bootstrap error");
       }
     }
+
+    return () => {
+      if (consentTransitionRef.current !== null) {
+        window.clearTimeout(consentTransitionRef.current);
+        consentTransitionRef.current = null;
+      }
+    };
   }, [hydrateFromInit, setPhase, setWorldState]);
 
   useEffect(() => {
@@ -133,21 +153,24 @@ export function App() {
   );
 
   const handleConsentSubmit = async () => {
-    if (!sessionId) {
+    if (!sessionId || syncingConsent) {
       return;
     }
 
-    setSyncingConsent(true);
     setError(null);
+    let nextMicrophone: { stop: () => void } | null = null;
 
     try {
       if (consentForm.enableMic) {
-        microphoneRef.current?.stop();
-        microphoneRef.current = await startMicrophoneCapture((breathRate) => {
+        nextMicrophone = await startMicrophoneCapture((breathRate) => {
           mergeLocalInput({ breathRate });
         });
+      } else {
+        microphoneRef.current?.stop();
+        microphoneRef.current = null;
       }
 
+      setSyncingConsent(true);
       const response = await updateConsent(
         buildConsentPayload({
           sessionId,
@@ -158,15 +181,24 @@ export function App() {
         }),
       );
 
+      microphoneRef.current?.stop();
+      microphoneRef.current = nextMicrophone;
+      nextMicrophone = null;
       applyConsent(response);
       setWorldState(response.world_state);
-      mergeLocalInput({ ...defaultLocalInputSnapshot, breathRate: localInput.breathRate });
+      mergeLocalInput({
+        ...defaultLocalInputSnapshot,
+        breathRate: useWorldStore.getState().localInput.breathRate,
+      });
       setPhase("world");
     } catch (caughtError) {
+      nextMicrophone?.stop();
       setError(
-        caughtError instanceof Error
-          ? caughtError.message
-          : "Unable to complete the consent handshake",
+        consentForm.enableMic
+          ? explainMicrophoneError(caughtError)
+          : caughtError instanceof Error
+            ? caughtError.message
+            : "Unable to complete the consent handshake",
       );
     } finally {
       setSyncingConsent(false);
@@ -232,6 +264,7 @@ export function App() {
             <input
               type="checkbox"
               checked={consentForm.enableMic}
+              disabled={!microphoneCapability.requestable}
               onChange={(event) =>
                 setConsentForm((current) => ({
                   ...current,
@@ -241,6 +274,13 @@ export function App() {
               }
             />
           </label>
+          {!microphoneCapability.requestable ? (
+            <p className="consent-hint">{microphoneCapability.reason}</p>
+          ) : (
+            <p className="consent-hint">
+              Browser permission is requested only after you click <strong>Enter the biosphere</strong>.
+            </p>
+          )}
           <label className="consent-toggle">
             <span>Local biometrics proxy</span>
             <input
