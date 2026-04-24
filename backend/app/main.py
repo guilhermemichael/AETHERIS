@@ -14,6 +14,9 @@ def create_app() -> FastAPI:
     settings = get_settings()
     configure_logging(settings.log_level)
     app = FastAPI(title=settings.app_name, lifespan=create_lifespan(settings))
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.trusted_hosts)
+    app.add_middleware(RateLimitMiddleware)
+    app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
@@ -21,9 +24,6 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.trusted_hosts)
-    app.add_middleware(SecurityHeadersMiddleware)
-    app.add_middleware(RateLimitMiddleware)
     install_exception_handlers(app)
 
     app.include_router(admin.router, prefix=settings.api_v1_prefix)

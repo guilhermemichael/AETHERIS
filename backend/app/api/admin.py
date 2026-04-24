@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Request, Response, status
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Request, status
+from fastapi.responses import JSONResponse, PlainTextResponse
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -47,8 +47,12 @@ async def readiness(request: Request) -> JSONResponse:
     )
 
 
-@router.get("/metrics")
-async def metrics(request: Request) -> Response:
+@router.get(
+    "/metrics",
+    response_class=PlainTextResponse,
+    responses={200: {"content": {"text/plain": {}}}},
+)
+async def metrics(request: Request) -> PlainTextResponse:
     telemetry = request.app.state.telemetry
-    return Response(content=telemetry.render(), media_type=telemetry.content_type)
+    return PlainTextResponse(content=telemetry.render(), media_type=telemetry.content_type)
 
