@@ -1,0 +1,763 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AETHERIS backend",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/v1/admin/health": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Healthcheck",
+        "operationId": "healthcheck_api_v1_admin_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Healthcheck Api V1 Admin Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/readiness": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Readiness",
+        "operationId": "readiness_api_v1_admin_readiness_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/metrics": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Metrics",
+        "operationId": "metrics_api_v1_admin_metrics_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/init": {
+      "post": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Init Session",
+        "operationId": "init_session_api_v1_sessions_init_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionInitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionInitResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/consent": {
+      "post": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Update Consent",
+        "operationId": "update_consent_api_v1_sessions_consent_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsentUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsentUpdateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/me": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Get Session Me",
+        "operationId": "get_session_me_api_v1_sessions_me_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionMeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Delete Session Me",
+        "operationId": "delete_session_me_api_v1_sessions_me_delete",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/world/state": {
+      "get": {
+        "tags": [
+          "world"
+        ],
+        "summary": "Get World State",
+        "operationId": "get_world_state_api_v1_world_state_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorldStateSchema"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/world/recompute": {
+      "post": {
+        "tags": [
+          "world"
+        ],
+        "summary": "Recompute World",
+        "operationId": "recompute_world_api_v1_world_recompute_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorldRecomputeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorldStateSchema"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ConsentState": {
+        "properties": {
+          "microphone": {
+            "type": "boolean",
+            "title": "Microphone",
+            "default": false
+          },
+          "camera": {
+            "type": "boolean",
+            "title": "Camera",
+            "default": false
+          },
+          "local_biometrics": {
+            "type": "boolean",
+            "title": "Local Biometrics",
+            "default": false
+          },
+          "audio": {
+            "type": "boolean",
+            "title": "Audio",
+            "default": false
+          },
+          "presence": {
+            "type": "boolean",
+            "title": "Presence",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "ConsentState"
+      },
+      "ConsentUpdateRequest": {
+        "properties": {
+          "consent": {
+            "$ref": "#/components/schemas/ConsentState"
+          }
+        },
+        "type": "object",
+        "required": [
+          "consent"
+        ],
+        "title": "ConsentUpdateRequest"
+      },
+      "ConsentUpdateResponse": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "consent": {
+            "$ref": "#/components/schemas/ConsentState"
+          },
+          "world_state": {
+            "$ref": "#/components/schemas/WorldStateSchema"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "consent",
+          "world_state"
+        ],
+        "title": "ConsentUpdateResponse"
+      },
+      "FeatureFlags": {
+        "properties": {
+          "webgpu_enabled": {
+            "type": "boolean",
+            "title": "Webgpu Enabled"
+          },
+          "webgl_fallback_enabled": {
+            "type": "boolean",
+            "title": "Webgl Fallback Enabled"
+          },
+          "local_biometrics_enabled": {
+            "type": "boolean",
+            "title": "Local Biometrics Enabled"
+          },
+          "audio_reactive_enabled": {
+            "type": "boolean",
+            "title": "Audio Reactive Enabled"
+          },
+          "websocket_enabled": {
+            "type": "boolean",
+            "title": "Websocket Enabled"
+          },
+          "echoes_enabled": {
+            "type": "boolean",
+            "title": "Echoes Enabled",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "webgpu_enabled",
+          "webgl_fallback_enabled",
+          "local_biometrics_enabled",
+          "audio_reactive_enabled",
+          "websocket_enabled"
+        ],
+        "title": "FeatureFlags"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "SessionInitRequest": {
+        "properties": {
+          "locale": {
+            "type": "string",
+            "maxLength": 16,
+            "minLength": 2,
+            "title": "Locale"
+          },
+          "device_class": {
+            "type": "string",
+            "enum": [
+              "desktop",
+              "tablet",
+              "mobile",
+              "unknown"
+            ],
+            "title": "Device Class"
+          },
+          "render_mode": {
+            "type": "string",
+            "enum": [
+              "webgpu",
+              "webgl",
+              "static"
+            ],
+            "title": "Render Mode"
+          },
+          "prefers_reduced_motion": {
+            "type": "boolean",
+            "title": "Prefers Reduced Motion",
+            "default": false
+          },
+          "timezone_offset_minutes": {
+            "type": "integer",
+            "maximum": 840.0,
+            "minimum": -840.0,
+            "title": "Timezone Offset Minutes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "locale",
+          "device_class",
+          "render_mode",
+          "timezone_offset_minutes"
+        ],
+        "title": "SessionInitRequest"
+      },
+      "SessionInitResponse": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "access_token": {
+            "type": "string",
+            "title": "Access Token"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "consent": {
+            "$ref": "#/components/schemas/ConsentState"
+          },
+          "feature_flags": {
+            "$ref": "#/components/schemas/FeatureFlags"
+          },
+          "world_state": {
+            "$ref": "#/components/schemas/WorldStateSchema"
+          },
+          "room_id": {
+            "type": "string",
+            "title": "Room Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "access_token",
+          "expires_at",
+          "consent",
+          "feature_flags",
+          "world_state",
+          "room_id"
+        ],
+        "title": "SessionInitResponse"
+      },
+      "SessionMeResponse": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "consent": {
+            "$ref": "#/components/schemas/ConsentState"
+          },
+          "feature_flags": {
+            "$ref": "#/components/schemas/FeatureFlags"
+          },
+          "world_state": {
+            "$ref": "#/components/schemas/WorldStateSchema"
+          },
+          "room_id": {
+            "type": "string",
+            "title": "Room Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "expires_at",
+          "consent",
+          "feature_flags",
+          "world_state",
+          "room_id"
+        ],
+        "title": "SessionMeResponse"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "WorldRecomputeRequest": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "presence",
+              "interaction"
+            ],
+            "title": "Reason",
+            "default": "manual"
+          }
+        },
+        "type": "object",
+        "title": "WorldRecomputeRequest"
+      },
+      "WorldStateSchema": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "void",
+              "bloom",
+              "nebula",
+              "crystal",
+              "archive"
+            ],
+            "title": "Mode"
+          },
+          "seed": {
+            "type": "string",
+            "title": "Seed"
+          },
+          "entropy": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Entropy"
+          },
+          "fog_density": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Fog Density"
+          },
+          "bloom_strength": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Bloom Strength"
+          },
+          "particle_density": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Particle Density"
+          },
+          "gravity": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Gravity"
+          },
+          "color_temperature": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Color Temperature"
+          },
+          "palette": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Palette"
+          },
+          "typography_weight": {
+            "type": "integer",
+            "maximum": 900.0,
+            "minimum": 100.0,
+            "title": "Typography Weight"
+          },
+          "audio_intensity": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Audio Intensity"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mode",
+          "seed",
+          "entropy",
+          "fog_density",
+          "bloom_strength",
+          "particle_density",
+          "gravity",
+          "color_temperature",
+          "palette",
+          "typography_weight",
+          "audio_intensity"
+        ],
+        "title": "WorldStateSchema"
+      }
+    }
+  }
+}

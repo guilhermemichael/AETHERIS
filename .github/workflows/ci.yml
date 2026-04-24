@@ -1,0 +1,98 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: aetheris
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d aetheris"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      AETHERIS_DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/aetheris
+      AETHERIS_REDIS_URL: redis://127.0.0.1:6379/0
+      AETHERIS_TOKEN_SECRET: development-only-change-me-32-bytes
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Sync dependencies
+        run: uv sync --dev
+      - name: Run migrations
+        run: uv run alembic upgrade head
+      - name: Ruff
+        run: uv run ruff check
+      - name: Mypy
+        run: uv run mypy
+      - name: Pytest
+        run: uv run pytest
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+      - name: Install dependencies
+        run: npm ci
+      - name: Sync backend dependencies
+        run: uv sync --dev
+        working-directory: backend
+      - name: Export OpenAPI
+        run: uv run python scripts/export_openapi.py
+        working-directory: backend
+      - name: Generate API types
+        run: npm run generate:api-types
+      - name: Verify generated contracts
+        run: git diff --exit-code backend/openapi.json frontend/src/generated/api-types.ts
+      - name: Lint
+        run: npm run lint --workspace frontend
+      - name: Typecheck
+        run: npm run typecheck --workspace frontend
+      - name: Unit tests
+        run: npm run test --workspace frontend
+      - name: Build
+        run: npm run build --workspace frontend
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+      - name: Smoke tests
+        run: npm run test:smoke --workspace frontend

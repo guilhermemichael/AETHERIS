@@ -1,0 +1,15 @@
+body {
+  font-family: "Segoe UI Variable Text", "Aptos", "SF Pro Display", sans-serif;
+}
+
+h1,
+h2 {
+  font-family: "Cormorant Garamond", "Iowan Old Style", Georgia, serif;
+}
+
+.eyebrow,
+.content-node,
+.primary-action,
+.status-bar {
+  font-family: "Bahnschrift", "Aptos", sans-serif;
+}
