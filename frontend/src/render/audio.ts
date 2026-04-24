@@ -1,4 +1,5 @@
-import type { LocalInputSnapshot, WorldState } from "../app/types";
+import type { WorldState } from "../api/contracts";
+import type { LocalInputSnapshot } from "../biometrics/localInput";
 
 export class ReactiveSoundscape {
   private audioContext: AudioContext | null = null;
@@ -28,11 +29,11 @@ export class ReactiveSoundscape {
 
     const now = this.audioContext.currentTime;
     this.oscillator.frequency.linearRampToValueAtTime(
-      88 + world.collective_luminosity * 42 + input.breathRate * 4,
+      88 + world.audio_intensity * 42 + input.breathRate * 4 + input.cameraEnergy * 8,
       now + 0.2,
     );
     this.gainNode.gain.linearRampToValueAtTime(
-      Math.min(0.06, 0.012 + world.bloom * 0.03 + input.attention * 0.02),
+      Math.min(0.06, 0.008 + world.bloom_strength * 0.03 + input.attention * 0.02),
       now + 0.25,
     );
   }

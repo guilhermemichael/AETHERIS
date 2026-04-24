@@ -1,4 +1,15 @@
-import type { LocalInputSnapshot, WorldState } from "../app/types";
+import type { WorldState } from "../api/contracts";
+
+export interface LocalInputSnapshot {
+  breathRate: number;
+  cameraEnergy: number;
+  attention: number;
+  motionTension: number;
+  pointerX: number;
+  pointerY: number;
+  dwell: number;
+  lastInteractionAt: number;
+}
 
 export function createPointerSnapshot(
   event: PointerEvent,
@@ -39,9 +50,9 @@ export function estimateBreathRate(level: number, previous: number): number {
 
 export function mapLocalInputToWorldModifiers(world: WorldState, input: LocalInputSnapshot) {
   return {
-    bloomBoost: clamp(world.bloom * 0.45 + input.breathRate * 0.04, 0, 1.2),
-    revealBoost: clamp(world.reveal_radius + input.dwell * 0.35, 0, 1.3),
-    paletteDrift: clamp(world.collective_luminosity + input.attention * 0.12, 0, 1),
+    bloomBoost: clamp(world.bloom_strength * 0.42 + input.breathRate * 0.05, 0, 1.2),
+    revealBoost: clamp(world.color_temperature * 0.4 + input.dwell * 0.34, 0, 1.2),
+    paletteDrift: clamp(world.audio_intensity * 0.3 + input.cameraEnergy * 0.28, 0, 1),
     turbulence: clamp(world.entropy * 0.55 + input.motionTension * 0.45, 0, 1),
   };
 }

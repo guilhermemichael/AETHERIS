@@ -1,4 +1,15 @@
-import type { ContentNode } from "../app/types";
+export interface ContentNode {
+  id: string;
+  label: string;
+  title: string;
+  eyebrow: string;
+  body: string;
+  accent: string;
+  anchor: {
+    top: string;
+    left: string;
+  };
+}
 
 export const siteManifest: ContentNode[] = [
   {
@@ -41,4 +52,3 @@ export const siteManifest: ContentNode[] = [
     },
   },
 ];
-

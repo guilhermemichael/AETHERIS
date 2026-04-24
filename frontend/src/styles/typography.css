@@ -1,13 +1,15 @@
-@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=Manrope:wght@300;400;500;600;700&display=swap");
-
 body {
-  font-family: "Manrope", sans-serif;
+  font-family: "Segoe UI Variable Text", "Aptos", "SF Pro Display", sans-serif;
 }
 
 h1,
-h2,
-.pulse-node,
-.content-node {
-  font-family: "Cormorant Garamond", serif;
+h2 {
+  font-family: "Cormorant Garamond", "Iowan Old Style", Georgia, serif;
 }
 
+.eyebrow,
+.content-node,
+.primary-action,
+.status-bar {
+  font-family: "Bahnschrift", "Aptos", sans-serif;
+}

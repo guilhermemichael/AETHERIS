@@ -1,4 +1,16 @@
 # Infrastructure
 
-This directory is reserved for deployment, observability, and edge/runtime configuration once AETHERIS moves beyond the local-first v1 milestone.
+## Local production spine
+
+Use the root `docker-compose.yml` to boot the two runtime dependencies required by AETHERIS v1.5:
+
+- `postgres` for durable sessions and world snapshots.
+- `redis` for ephemeral presence, websocket heartbeat, and rate limiting.
+
+```bash
+cd C:\Users\guilh\PROJETOS\AETHERIS
+docker compose up -d
+```
+
+Prometheus and Grafana remain a future extension; the backend already exposes `/api/v1/admin/metrics` for that next step.
 

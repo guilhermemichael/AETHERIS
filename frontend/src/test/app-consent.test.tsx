@@ -4,16 +4,24 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   initSessionMock,
   updateConsentMock,
+  requestMediaPermissionsMock,
   startMicrophoneCaptureMock,
-  getMicrophoneCapabilityMock,
+  startCameraCaptureMock,
+  getMediaCapabilityMock,
+  wsConnectMock,
+  wsCloseMock,
 } = vi.hoisted(() => ({
   initSessionMock: vi.fn(),
   updateConsentMock: vi.fn(),
+  requestMediaPermissionsMock: vi.fn(),
   startMicrophoneCaptureMock: vi.fn(),
-  getMicrophoneCapabilityMock: vi.fn(),
+  startCameraCaptureMock: vi.fn(),
+  getMediaCapabilityMock: vi.fn(),
+  wsConnectMock: vi.fn(),
+  wsCloseMock: vi.fn(),
 }));
 
-vi.mock("../app/api", () => ({
+vi.mock("../api/sessions", () => ({
   initSession: initSessionMock,
   updateConsent: updateConsentMock,
 }));
@@ -22,19 +30,40 @@ vi.mock("../app/RenderViewport", () => ({
   RenderViewport: () => <div data-testid="render-viewport" />,
 }));
 
-vi.mock("../render/audio", () => ({
-  ReactiveSoundscape: class {
-    async start() {}
-    update() {}
-    stop() {}
-  },
+vi.mock("../biometrics/permissions", () => ({
+  requestMediaPermissions: requestMediaPermissionsMock,
+  getMediaCapability: getMediaCapabilityMock,
+  buildConsentState: (
+    preferences: Record<string, boolean>,
+    permissions: {
+      microphone: { granted: boolean };
+      camera: { granted: boolean };
+    },
+  ) => ({
+    microphone: preferences.microphone && permissions.microphone.granted,
+    camera: preferences.camera && permissions.camera.granted,
+    local_biometrics: preferences.localBiometrics && permissions.microphone.granted,
+    audio: preferences.audio,
+    presence: preferences.presence,
+  }),
+  summarizePermissionIssues: () => null,
 }));
 
 vi.mock("../biometrics/microphone", () => ({
   startMicrophoneCapture: startMicrophoneCaptureMock,
   explainMicrophoneError: (error: unknown) =>
     error instanceof Error ? error.message : "Unable to initialize microphone capture.",
-  getMicrophoneCapability: getMicrophoneCapabilityMock,
+}));
+
+vi.mock("../biometrics/camera", () => ({
+  startCameraCapture: startCameraCaptureMock,
+}));
+
+vi.mock("../sync/wsClient", () => ({
+  AetherisWsClient: class {
+    connect = wsConnectMock;
+    close = wsCloseMock;
+  },
 }));
 
 import { App } from "../app/App";
@@ -47,62 +76,74 @@ describe("App consent handshake", () => {
     vi.clearAllMocks();
 
     initSessionMock.mockResolvedValue({
-      session_id: "sess_test",
+      session_id: "51d13dbf-8352-4c8b-a500-fcbf378ab6eb",
       access_token: "token",
-      seed: "seed",
+      expires_at: "2026-04-24T18:00:00Z",
+      consent: {
+        microphone: false,
+        camera: false,
+        local_biometrics: false,
+        audio: false,
+        presence: false,
+      },
       room_id: "room_void_01",
-      consent_required: ["audio_reactive", "mic"],
       world_state: {
-        mode: "ritual",
-        fog_density: 0.5,
-        gravity: 0.4,
-        bloom: 0.3,
+        mode: "void",
+        seed: "seed",
         entropy: 0.2,
-        particle_count: 1000,
-        palette: ["#05070B", "#68F0DA", "#8E6CFF", "#72D4A4"],
+        fog_density: 0.5,
+        bloom_strength: 0.3,
+        particle_density: 0.4,
+        gravity: 0.4,
+        color_temperature: 0.3,
+        palette: ["#000000", "#050507", "#72F7FF", "#8A5CFF", "#5FFFC2"],
         typography_weight: 400,
-        soundscape: "silent_depth",
-        reveal_radius: 0.2,
-        collective_luminosity: 0.3,
+        audio_intensity: 0.2,
       },
       feature_flags: {
-        webgpu_preferred: true,
-        reactive_audio: true,
-        brush_reveal: true,
-        social_presence: false,
-        temporal_echoes: false,
+        webgpu_enabled: true,
+        webgl_fallback_enabled: true,
+        local_biometrics_enabled: true,
+        audio_reactive_enabled: true,
+        websocket_enabled: true,
+        echoes_enabled: false,
       },
     });
 
     updateConsentMock.mockResolvedValue({
-      session_id: "sess_test",
+      session_id: "51d13dbf-8352-4c8b-a500-fcbf378ab6eb",
       consent: {
-        mic: true,
-        camera: false,
+        microphone: true,
+        camera: true,
         local_biometrics: false,
-        presence_sync: true,
-        audio_reactive: true,
+        audio: true,
+        presence: true,
       },
-      consent_required: ["audio_reactive", "mic"],
       world_state: {
-        mode: "ritual",
-        fog_density: 0.45,
-        gravity: 0.41,
-        bloom: 0.35,
+        mode: "crystal",
+        seed: "seed",
         entropy: 0.25,
-        particle_count: 1100,
-        palette: ["#05070B", "#68F0DA", "#8E6CFF", "#72D4A4"],
+        fog_density: 0.45,
+        bloom_strength: 0.35,
+        particle_density: 0.45,
+        gravity: 0.41,
+        color_temperature: 0.4,
+        palette: ["#000000", "#050507", "#72F7FF", "#8A5CFF", "#5FFFC2"],
         typography_weight: 500,
-        soundscape: "resonant_veil",
-        reveal_radius: 0.25,
-        collective_luminosity: 0.36,
+        audio_intensity: 0.36,
       },
-      feature_flags: {
-        webgpu_preferred: true,
-        reactive_audio: true,
-        brush_reveal: true,
-        social_presence: false,
-        temporal_echoes: false,
+    });
+
+    requestMediaPermissionsMock.mockResolvedValue({
+      microphone: {
+        granted: true,
+        stream: new MediaStream(),
+        error: null,
+      },
+      camera: {
+        granted: true,
+        stream: new MediaStream(),
+        error: null,
       },
     });
 
@@ -110,7 +151,11 @@ describe("App consent handshake", () => {
       stop: vi.fn(),
     });
 
-    getMicrophoneCapabilityMock.mockReturnValue({
+    startCameraCaptureMock.mockResolvedValue({
+      stop: vi.fn(),
+    });
+
+    getMediaCapabilityMock.mockReturnValue({
       requestable: true,
       reason: null,
     });
@@ -118,52 +163,61 @@ describe("App consent handshake", () => {
     useSessionStore.setState({
       sessionId: null,
       accessToken: null,
-      seed: null,
+      expiresAt: null,
       roomId: null,
       featureFlags: null,
-      consentRequired: [],
       consent: {
-        mic: false,
+        microphone: false,
         camera: false,
         local_biometrics: false,
-        presence_sync: true,
-        audio_reactive: true,
+        audio: false,
+        presence: false,
       },
+      websocketConnected: false,
     });
     useWorldStore.setState({
       worldState: null,
       localInput: { ...defaultLocalInputSnapshot },
+      rendererMode: "static",
     });
     useUiStore.setState({
       phase: "void",
       activeNodeId: "about",
       brush: { x: 50, y: 50 },
+      error: null,
     });
   });
 
-  it("requests microphone access from the consent button gesture before syncing consent", async () => {
+  it("requests media permissions before initializing the backend session", async () => {
     render(<App />);
-
-    await waitFor(() => expect(initSessionMock).toHaveBeenCalledTimes(1));
     await act(async () => {
       useUiStore.getState().setPhase("consent");
     });
 
-    expect(await screen.findByText("Let the environment adapt to your presence.")).toBeInTheDocument();
+    expect(await screen.findByText("Let the environment attune to your presence.")).toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText("Microphone-driven presence"));
-    fireEvent.click(screen.getByRole("button", { name: "Enter the biosphere" }));
+    fireEvent.click(screen.getByLabelText("Camera-based local framing"));
+    fireEvent.click(screen.getByRole("button", { name: "Begin calibration" }));
 
+    await waitFor(() => expect(requestMediaPermissionsMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(initSessionMock).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(startMicrophoneCaptureMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(startCameraCaptureMock).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(updateConsentMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(wsConnectMock).toHaveBeenCalledTimes(1));
 
-    expect(startMicrophoneCaptureMock.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(requestMediaPermissionsMock.mock.invocationCallOrder[0]).toBeLessThan(
+      initSessionMock.mock.invocationCallOrder[0],
+    );
+    expect(initSessionMock.mock.invocationCallOrder[0]).toBeLessThan(
       updateConsentMock.mock.invocationCallOrder[0],
     );
     expect(updateConsentMock).toHaveBeenCalledWith(
+      "token",
       expect.objectContaining({
-        session_id: "sess_test",
-        mic: true,
+        microphone: true,
+        camera: true,
       }),
     );
   });

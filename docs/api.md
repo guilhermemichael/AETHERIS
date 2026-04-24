@@ -1,26 +1,43 @@
-# AETHERIS API v1
+# AETHERIS API v1.5
 
-## `GET /api/v1/admin/health`
+## Admin
 
-Returns backend liveness.
+- `GET /api/v1/admin/health`
+  Liveness probe for process health.
+- `GET /api/v1/admin/readiness`
+  Readiness probe for Postgres and Redis availability.
+- `GET /api/v1/admin/metrics`
+  Prometheus metrics endpoint.
 
-## `POST /api/v1/sessions/init`
+## Sessions
 
-Creates an anonymous session and returns:
+- `POST /api/v1/sessions/init`
+  Public bootstrap route. Returns `session_id`, `access_token`, `expires_at`, `consent`, `feature_flags`, `world_state`, and `room_id`.
+- `GET /api/v1/sessions/me`
+  Requires `Authorization: Bearer <token>`.
+- `POST /api/v1/sessions/consent`
+  Requires `Authorization: Bearer <token>`. Accepts the typed `ConsentState` payload and recomputes the world.
+- `DELETE /api/v1/sessions/me`
+  Requires `Authorization: Bearer <token>`. Invalidates the session immediately.
 
-- `session_id`
-- `access_token`
-- `seed`
-- `room_id`
-- `consent_required`
-- `world_state`
-- `feature_flags`
+## World
 
-## `POST /api/v1/sessions/consent`
+- `GET /api/v1/world/state`
+  Requires `Authorization: Bearer <token>`. Returns the latest world snapshot for the authenticated session.
+- `POST /api/v1/world/recompute`
+  Requires `Authorization: Bearer <token>`. Recomputes and stores a new world snapshot.
 
-Accepts a session id plus consent booleans for microphone, biometrics proxy, presence sync, and audio reactivity. Returns the updated consent snapshot and recomputed `world_state`.
+## WebSocket
 
-## `GET /api/v1/world/state`
+- `WS /api/v1/ws?token=<jwt>`
+  Authenticated websocket foundation for `session.join`, `presence.update`, `local.input`, `world.interact`, and `ping`.
 
-Returns a baseline world state when no `session_id` is supplied, or the active session world state when it is.
+Server events currently shipped:
+
+- `session.accepted`
+- `presence.snapshot`
+- `presence.left`
+- `world.patch`
+- `pong`
+- `error`
 

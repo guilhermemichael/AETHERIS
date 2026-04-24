@@ -1,22 +1,24 @@
 # AETHERIS Architecture
 
-## System boundaries
+## v1.5 production spine
 
-- Backend owns session identity, seed generation, and typed world-state composition.
-- Frontend owns user interface state, local derived input, and content discovery.
-- Renderer consumes only `WorldState` plus `LocalInputSnapshot`.
+- Backend owns identity, deterministic seed generation, JWT validation, world composition, OpenAPI contracts, metrics, and websocket session enforcement.
+- Frontend owns consent UX, local-only camera/microphone handling, local input sampling, renderer orchestration, and content discovery.
+- Renderer consumes only `RenderInput`, which contains `worldState`, `localInput`, and `viewport`.
 
-## v1 execution model
+## Runtime boundaries
 
-1. Frontend initializes an anonymous session through `POST /api/v1/sessions/init`.
-2. Backend issues a deterministic session seed and a baseline ritual world state.
-3. Frontend presents granular consent controls and keeps all raw sensory media local.
-4. Consent updates are sent as booleans through `POST /api/v1/sessions/consent`.
-5. Backend recomputes the world state and the renderer blooms into the main experience.
+1. User reaches the void and the pulse node appears.
+2. Consent UI is shown before any media request is attempted.
+3. Camera and microphone requests happen only inside the CTA click handler.
+4. Backend session initialization happens after the permission handshake.
+5. Consent is posted with the authenticated bearer token.
+6. The renderer boots from typed world state and local input only.
+7. WebSocket joins the default room and keeps heartbeat/presence state alive.
 
-## Why the split matters
+## Persistence split
 
-- Visual effect can evolve independently of product content.
-- Product content stays typed and testable instead of being trapped inside animation code.
-- Future Redis/Postgres/WebSocket layers can be introduced behind current service and repository seams.
+- `Postgres` stores durable `sessions` and `world_snapshots`.
+- `Redis` stores ephemeral presence, room membership, websocket heartbeat, and rate-limit counters.
+- Repositories keep memory fallbacks for local testability, while CI and compose can exercise the real backends.
 

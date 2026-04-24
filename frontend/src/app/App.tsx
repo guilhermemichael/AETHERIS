@@ -1,76 +1,92 @@
-import { useEffect, useMemo, useRef, useState, useTransition, type CSSProperties } from "react";
-
-import { initSession, updateConsent } from "./api";
-import { RenderViewport } from "./RenderViewport";
-import type { ConsentState, SessionInitRequest } from "./types";
-import { siteManifest } from "../content/siteManifest";
-import { createPointerSnapshot, decayLocalInput } from "../biometrics/localInput";
 import {
-  explainMicrophoneError,
-  getMicrophoneCapability,
-  startMicrophoneCapture,
-} from "../biometrics/microphone";
-import { buildConsentPayload } from "../biometrics/privacy";
-import { ReactiveSoundscape } from "../render/audio";
+  Suspense,
+  lazy,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
+
+import { initSession, updateConsent } from "../api/sessions";
+import type { ConsentState, SessionInitRequest } from "../api/contracts";
+import { ConsentGate } from "./ConsentGate";
+import { siteManifest } from "../content/siteManifest";
+import { startCameraCapture } from "../biometrics/camera";
+import { stopControllers } from "../biometrics/cleanup";
+import {
+  buildConsentState,
+  getMediaCapability,
+  requestMediaPermissions,
+  summarizePermissionIssues,
+  type ConsentPreferences,
+} from "../biometrics/permissions";
+import {
+  createPointerSnapshot,
+  decayLocalInput,
+} from "../biometrics/localInput";
+import { explainMicrophoneError, startMicrophoneCapture } from "../biometrics/microphone";
+import { useInputStore } from "../state/inputStore";
 import { useSessionStore } from "../state/sessionStore";
 import { defaultLocalInputSnapshot, useWorldStore } from "../state/worldStore";
 import { useUiStore } from "../state/uiStore";
+import { detectRendererCapabilities, resolveRendererMode } from "../render/capabilities";
+import { AetherisWsClient } from "../sync/wsClient";
 
-const initialRequest = buildInitialRequest();
-
-const defaultConsentForm = {
-  enableMic: false,
-  enableBiometrics: false,
-  enableAudio: true,
-  enablePresence: true,
+const initialConsentPreferences: ConsentPreferences = {
+  microphone: false,
+  camera: false,
+  localBiometrics: false,
+  audio: true,
+  presence: true,
 };
 
-export function App() {
-  const [isBooting, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
-  const [consentForm, setConsentForm] = useState(defaultConsentForm);
-  const [syncingConsent, setSyncingConsent] = useState(false);
-  const microphoneRef = useRef<{ stop: () => void } | null>(null);
-  const soundscapeRef = useRef<ReactiveSoundscape | null>(null);
-  const shellRef = useRef<HTMLDivElement | null>(null);
-  const bootstrapStartedRef = useRef(false);
-  const consentTransitionRef = useRef<number | null>(null);
-  const microphoneCapability = useMemo(() => getMicrophoneCapability(), []);
+const RenderViewport = lazy(async () => {
+  const module = await import("./RenderViewport");
+  return { default: module.RenderViewport };
+});
 
-  const { sessionId, consent, hydrateFromInit, applyConsent } = useSessionStore();
-  const { worldState, localInput, mergeLocalInput, setWorldState } = useWorldStore();
-  const { phase, activeNodeId, brush, setActiveNodeId, setBrush, setPhase } = useUiStore();
+export function App() {
+  const shellRef = useRef<HTMLDivElement | null>(null);
+  const microphoneRef = useRef<{ stop: () => void } | null>(null);
+  const cameraRef = useRef<{ stop: () => void } | null>(null);
+  const wsRef = useRef<AetherisWsClient | null>(null);
+  const pulseTimerRef = useRef<number | null>(null);
+  const consentTimerRef = useRef<number | null>(null);
+  const [preferences, setPreferences] = useState(initialConsentPreferences);
+  const [submitting, setSubmitting] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const { consent, hydrateFromInit, applyConsent, setWebsocketConnected, clearSession } =
+    useSessionStore();
+  const { worldState, localInput, mergeLocalInput, setWorldState, setRendererMode } =
+    useWorldStore();
+  const { phase, activeNodeId, brush, error, setActiveNodeId, setBrush, setError, setPhase } =
+    useUiStore();
+  const { setCameraState, setMicrophoneState } = useInputStore();
+
+  const microphoneCapability = useMemo(() => getMediaCapability("microphone"), []);
+  const cameraCapability = useMemo(() => getMediaCapability("camera"), []);
+  const activeNode = useMemo(
+    () => siteManifest.find((entry) => entry.id === activeNodeId) ?? siteManifest[0],
+    [activeNodeId],
+  );
+  const shouldRenderViewport = phase === "world" && worldState !== null;
 
   useEffect(() => {
-    if (bootstrapStartedRef.current) {
-      return;
-    }
-
-    bootstrapStartedRef.current = true;
-
-    startTransition(() => {
-      void bootstrap();
-    });
-
-    async function bootstrap() {
-      try {
-        const response = await initSession(initialRequest);
-        hydrateFromInit(response);
-        setWorldState(response.world_state);
-        setPhase("pulse");
-        consentTransitionRef.current = window.setTimeout(() => setPhase("consent"), 1400);
-      } catch (caughtError) {
-        setError(caughtError instanceof Error ? caughtError.message : "Unknown bootstrap error");
-      }
-    }
+    setPhase("void");
+    pulseTimerRef.current = window.setTimeout(() => setPhase("pulse"), 280);
+    consentTimerRef.current = window.setTimeout(() => setPhase("consent"), 1120);
 
     return () => {
-      if (consentTransitionRef.current !== null) {
-        window.clearTimeout(consentTransitionRef.current);
-        consentTransitionRef.current = null;
+      if (pulseTimerRef.current !== null) {
+        window.clearTimeout(pulseTimerRef.current);
+      }
+      if (consentTimerRef.current !== null) {
+        window.clearTimeout(consentTimerRef.current);
       }
     };
-  }, [hydrateFromInit, setPhase, setWorldState]);
+  }, [setPhase]);
 
   useEffect(() => {
     if (phase !== "world") {
@@ -116,200 +132,150 @@ export function App() {
   }, [mergeLocalInput, setBrush]);
 
   useEffect(() => {
-    if (!worldState || !consent.audio_reactive || phase !== "world") {
-      soundscapeRef.current?.stop();
-      soundscapeRef.current = null;
-      return;
-    }
-
-    const soundscape = new ReactiveSoundscape();
-    soundscapeRef.current = soundscape;
-    void soundscape.start();
-
     return () => {
-      soundscape.stop();
-      soundscapeRef.current = null;
+      stopControllers(microphoneRef.current, cameraRef.current);
+      wsRef.current?.close();
+      clearSession();
     };
-  }, [consent.audio_reactive, phase, worldState]);
-
-  useEffect(() => {
-    if (!worldState || !soundscapeRef.current || phase !== "world") {
-      return;
-    }
-
-    soundscapeRef.current.update(worldState, localInput);
-  }, [localInput, phase, worldState]);
-
-  useEffect(() => {
-    return () => {
-      microphoneRef.current?.stop();
-      soundscapeRef.current?.stop();
-    };
-  }, []);
-
-  const activeNode = useMemo(
-    () => siteManifest.find((entry) => entry.id === activeNodeId) ?? siteManifest[0],
-    [activeNodeId],
-  );
+  }, [clearSession]);
 
   const handleConsentSubmit = async () => {
-    if (!sessionId || syncingConsent) {
+    if (submitting) {
       return;
     }
 
+    setSubmitting(true);
     setError(null);
+    setNotice(null);
+    setPhase("authenticating");
+    wsRef.current?.close();
+
     let nextMicrophone: { stop: () => void } | null = null;
+    let nextCamera: { stop: () => void } | null = null;
 
     try {
-      if (consentForm.enableMic) {
-        nextMicrophone = await startMicrophoneCapture((breathRate) => {
-          mergeLocalInput({ breathRate });
+      const permissionResult = await requestMediaPermissions(preferences);
+      setMicrophoneState(permissionResult.microphone.granted ? "granted" : "denied");
+      setCameraState(permissionResult.camera.granted ? "granted" : "denied");
+
+      if (permissionResult.microphone.stream) {
+        nextMicrophone = await startMicrophoneCapture(permissionResult.microphone.stream, (value) => {
+          mergeLocalInput({ breathRate: value });
         });
-      } else {
-        microphoneRef.current?.stop();
-        microphoneRef.current = null;
       }
 
-      setSyncingConsent(true);
-      const response = await updateConsent(
-        buildConsentPayload({
-          sessionId,
-          enableMic: consentForm.enableMic,
-          enableBiometrics: consentForm.enableBiometrics,
-          enableAudio: consentForm.enableAudio,
-          enablePresence: consentForm.enablePresence,
-        }),
-      );
+      if (permissionResult.camera.stream) {
+        nextCamera = await startCameraCapture(permissionResult.camera.stream, (value) => {
+          mergeLocalInput({ cameraEnergy: value, attention: Math.min(1, 0.62 + value * 0.3) });
+        });
+      }
+
+      const initResponse = await initSession(buildInitialRequest());
+      hydrateFromInit(initResponse);
+      setWorldState(initResponse.world_state);
+
+      const consentState = buildConsentState(preferences, permissionResult);
+      const consentResponse = await updateConsent(initResponse.access_token, consentState);
 
       microphoneRef.current?.stop();
+      cameraRef.current?.stop();
       microphoneRef.current = nextMicrophone;
+      cameraRef.current = nextCamera;
       nextMicrophone = null;
-      applyConsent(response);
-      setWorldState(response.world_state);
+      nextCamera = null;
+
+      applyConsent(consentResponse);
+      setWorldState(consentResponse.world_state);
       mergeLocalInput({
         ...defaultLocalInputSnapshot,
         breathRate: useWorldStore.getState().localInput.breathRate,
+        cameraEnergy: useWorldStore.getState().localInput.cameraEnergy,
       });
+
+      const permissionNotice = summarizePermissionIssues(permissionResult);
+      if (permissionNotice) {
+        setNotice(permissionNotice);
+      }
+
+      const wsClient = new AetherisWsClient(initResponse.access_token, {
+        onOpen: () => setWebsocketConnected(true),
+        onClose: () => setWebsocketConnected(false),
+        onMessage: (message) => {
+          if (message.type === "presence.snapshot") {
+            const sessions = Array.isArray(message.payload.sessions)
+              ? message.payload.sessions.length
+              : 0;
+            mergeLocalInput({
+              attention: Math.min(1, 0.68 + sessions * 0.08),
+            });
+          }
+        },
+      });
+      wsRef.current = wsClient;
+      wsClient.connect({ roomId: initResponse.room_id });
+
       setPhase("world");
     } catch (caughtError) {
-      nextMicrophone?.stop();
-      setError(
-        consentForm.enableMic
-          ? explainMicrophoneError(caughtError)
-          : caughtError instanceof Error
-            ? caughtError.message
-            : "Unable to complete the consent handshake",
-      );
+      stopControllers(nextMicrophone, nextCamera);
+      setPhase("consent");
+      setError(describeAppError(caughtError, preferences));
     } finally {
-      setSyncingConsent(false);
+      setSubmitting(false);
     }
   };
 
   return (
     <main
       ref={shellRef}
-      className="app-shell"
+      className="aetheris-root"
       data-phase={phase}
       style={
         {
           "--brush-x": `${brush.x}%`,
           "--brush-y": `${brush.y}%`,
-          "--accent-color": worldState?.palette[1] ?? "#68F0DA",
-          "--accent-secondary": worldState?.palette[2] ?? "#8E6CFF",
-          "--accent-tertiary": worldState?.palette[3] ?? "#72D4A4",
-          "--type-weight": `${worldState?.typography_weight ?? 360}`,
+          "--accent-color": worldState?.palette[2] ?? "#72f7ff",
+          "--accent-secondary": worldState?.palette[3] ?? "#8a5cff",
+          "--accent-tertiary": worldState?.palette[4] ?? "#5fffc2",
+          "--type-weight": `${worldState?.typography_weight ?? 320}`,
         } as CSSProperties
       }
     >
-      <RenderViewport worldState={worldState} localInput={localInput} />
+      {shouldRenderViewport ? (
+        <Suspense fallback={<div className="aetheris-viewport aetheris-viewport--pending" />}>
+          <RenderViewport
+            worldState={worldState}
+            localInput={localInput}
+            onRendererMode={setRendererMode}
+          />
+        </Suspense>
+      ) : (
+        <div className="aetheris-viewport aetheris-viewport--pending" />
+      )}
       <div className="fog-layer" />
       <div className="brush-layer" />
       <div className="grain-layer" />
 
       <section className="hero-copy" aria-live="polite">
         <p className="eyebrow">AETHERIS</p>
-        <h1>
-          A responsive digital biosphere with memory-ready architecture and a ritualized
-          interface.
-        </h1>
+        <h1>Immersive core, production spine, no decorative chaos.</h1>
         <p className="lede">
-          Presence enters first. Navigation condenses later. The world blooms from typed state,
-          not decorative chaos.
+          Presence enters first. Session state, renderer state, and content stay decoupled so the
+          environment feels rare instead of fragile.
         </p>
       </section>
 
       <div className="pulse-node" aria-hidden="true" />
 
-      {phase === "consent" ? (
-        <section className="consent-panel">
-          <p className="eyebrow">Handshake</p>
-          <h2>Let the environment adapt to your presence.</h2>
-          <p>
-            Audio stays local. Raw media is never persisted or uploaded. If you decline, AETHERIS
-            still renders in interaction-only mode.
-          </p>
-
-          <label className="consent-toggle">
-            <span>Reactive soundscape</span>
-            <input
-              type="checkbox"
-              checked={consentForm.enableAudio}
-              onChange={(event) =>
-                setConsentForm((current) => ({ ...current, enableAudio: event.target.checked }))
-              }
-            />
-          </label>
-          <label className="consent-toggle">
-            <span>Microphone-driven presence</span>
-            <input
-              type="checkbox"
-              checked={consentForm.enableMic}
-              disabled={!microphoneCapability.requestable}
-              onChange={(event) =>
-                setConsentForm((current) => ({
-                  ...current,
-                  enableMic: event.target.checked,
-                  enableBiometrics: event.target.checked ? current.enableBiometrics : false,
-                }))
-              }
-            />
-          </label>
-          {!microphoneCapability.requestable ? (
-            <p className="consent-hint">{microphoneCapability.reason}</p>
-          ) : (
-            <p className="consent-hint">
-              Browser permission is requested only after you click <strong>Enter the biosphere</strong>.
-            </p>
-          )}
-          <label className="consent-toggle">
-            <span>Local biometrics proxy</span>
-            <input
-              type="checkbox"
-              checked={consentForm.enableBiometrics}
-              disabled={!consentForm.enableMic}
-              onChange={(event) =>
-                setConsentForm((current) => ({
-                  ...current,
-                  enableBiometrics: event.target.checked,
-                }))
-              }
-            />
-          </label>
-          <label className="consent-toggle">
-            <span>Anonymous presence sync readiness</span>
-            <input
-              type="checkbox"
-              checked={consentForm.enablePresence}
-              onChange={(event) =>
-                setConsentForm((current) => ({ ...current, enablePresence: event.target.checked }))
-              }
-            />
-          </label>
-
-          <button className="primary-action" onClick={() => void handleConsentSubmit()}>
-            {syncingConsent ? "Attuning..." : "Enter the biosphere"}
-          </button>
-        </section>
+      {phase === "consent" || phase === "authenticating" ? (
+        <ConsentGate
+          preferences={preferences}
+          microphoneCapability={microphoneCapability}
+          cameraCapability={cameraCapability}
+          notice={error ?? notice}
+          submitting={submitting}
+          onChange={(patch) => setPreferences((current) => ({ ...current, ...patch }))}
+          onSubmit={() => void handleConsentSubmit()}
+        />
       ) : null}
 
       {phase === "world" ? (
@@ -338,37 +304,41 @@ export function App() {
       ) : null}
 
       <footer className="status-bar">
-        <span>{isBooting ? "Bootstrapping..." : worldState ? worldState.mode : "Awaiting seed"}</span>
-        <span>{error ?? describeConsent(consent)}</span>
+        <span>{worldState ? worldState.mode : phase === "authenticating" ? "attuning" : "void"}</span>
+        <span>{describeConsent(consent)}</span>
       </footer>
     </main>
   );
 }
 
 function describeConsent(consent: ConsentState) {
-  if (consent.local_biometrics && consent.mic) {
+  if (consent.local_biometrics && consent.microphone) {
     return "Somatic input active";
   }
-  if (consent.mic) {
+  if (consent.camera && consent.microphone) {
+    return "Camera and microphone local-only";
+  }
+  if (consent.microphone) {
     return "Microphone local-only";
+  }
+  if (consent.camera) {
+    return "Camera local-only";
   }
   return "Interaction-only mode";
 }
 
-function resolveDeviceClass() {
+function resolveDeviceClass(): SessionInitRequest["device_class"] {
   if (typeof window === "undefined") {
     return "unknown";
   }
 
-  const width = window.innerWidth;
-
-  if (width >= 1180) {
+  if (window.innerWidth >= 1180) {
     return "desktop";
   }
-  if (width >= 768) {
+  if (window.innerWidth >= 768) {
     return "tablet";
   }
-  if (width > 0) {
+  if (window.innerWidth > 0) {
     return "mobile";
   }
   return "unknown";
@@ -380,12 +350,27 @@ function buildInitialRequest(): SessionInitRequest {
     typeof window !== "undefined" &&
     typeof window.matchMedia === "function" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const renderMode =
+    typeof document === "undefined"
+      ? "static"
+      : resolveRendererMode(detectRendererCapabilities(document));
 
   return {
     locale,
     device_class: resolveDeviceClass(),
+    render_mode: renderMode,
     prefers_reduced_motion: prefersReducedMotion,
-    wants_audio: true,
-    wants_biometrics: true,
+    timezone_offset_minutes:
+      typeof Date === "undefined" ? 0 : Math.max(-840, Math.min(840, -new Date().getTimezoneOffset())),
   };
+}
+
+function describeAppError(error: unknown, preferences: ConsentPreferences): string {
+  if (preferences.microphone) {
+    return explainMicrophoneError(error);
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return "Unable to complete the consent handshake.";
 }

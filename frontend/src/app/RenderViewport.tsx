@@ -1,17 +1,19 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 
-import type { LocalInputSnapshot, WorldState } from "./types";
+import type { WorldState } from "../api/contracts";
+import type { LocalInputSnapshot } from "../biometrics/localInput";
 import { AetherisRenderEngine } from "../render/engine";
+import type { RendererMode } from "../render/capabilities";
 
 interface RenderViewportProps {
   worldState: WorldState | null;
   localInput: LocalInputSnapshot;
+  onRendererMode: (mode: RendererMode) => void;
 }
 
-export function RenderViewport({ worldState, localInput }: RenderViewportProps) {
+export function RenderViewport({ worldState, localInput, onRendererMode }: RenderViewportProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const engineRef = useRef<AetherisRenderEngine | null>(null);
-  const [rendererMode, setRendererMode] = useState("static");
 
   useEffect(() => {
     if (!containerRef.current || !worldState) {
@@ -22,26 +24,59 @@ export function RenderViewport({ worldState, localInput }: RenderViewportProps) 
     engineRef.current = engine;
     let isActive = true;
 
-    void engine.mount(containerRef.current, worldState, localInput).then((mode) => {
+    const container = containerRef.current;
+
+    void engine
+      .mount(container, {
+        worldState,
+        localInput,
+        viewport: readViewport(container),
+      })
+      .then((mode) => {
       if (isActive) {
-        setRendererMode(mode);
+        onRendererMode(mode);
       }
     });
 
+    const resizeObserver = new ResizeObserver(() => {
+      if (!engineRef.current || !containerRef.current || !worldState) {
+        return;
+      }
+      engineRef.current.update({
+        worldState,
+        localInput,
+        viewport: readViewport(containerRef.current),
+      });
+    });
+    resizeObserver.observe(container);
+
     return () => {
       isActive = false;
+      resizeObserver.disconnect();
       engine.dispose();
       engineRef.current = null;
     };
-  }, [worldState]);
+  }, [localInput, onRendererMode, worldState]);
 
   useEffect(() => {
-    if (!worldState) {
+    if (!worldState || !containerRef.current) {
       return;
     }
-    engineRef.current?.update(worldState, localInput);
+    engineRef.current?.update({
+      worldState,
+      localInput,
+      viewport: readViewport(containerRef.current),
+    });
   }, [localInput, worldState]);
 
-  return <div ref={containerRef} className="render-viewport" data-renderer-mode={rendererMode} />;
+  return <div ref={containerRef} className="aetheris-viewport" />;
+}
+
+function readViewport(container: HTMLElement) {
+  return {
+    width: Math.max(1, container.clientWidth),
+    height: Math.max(1, container.clientHeight),
+    dpr: window.devicePixelRatio || 1,
+  };
 }
 

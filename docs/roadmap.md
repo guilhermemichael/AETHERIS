@@ -2,22 +2,29 @@
 
 ## v1
 
-- Session kernel
-- Deterministic seed generation
+- Immersive core
 - Ritual onboarding
-- WebGPU-first render shell with fallbacks
-- Brush reveal and content constellation
+- Typed world-state contracts
+- Renderer fallback chain
 
-## v1.1
+## v1.5
 
-- WebSocket presence rooms
-- Collective luminosity based on real session density
-- Temporal echo scaffolding
+- Postgres-backed sessions and world snapshots
+- Redis-backed ephemeral presence foundation
+- JWT/session enforcement
+- WebSocket room and heartbeat scaffold
+- Exported OpenAPI plus generated frontend types
+- Observability, readiness, and stronger CI
 
 ## v2
 
-- Redis + Postgres persistence
-- Encrypted temporal echoes
-- Observability dashboards
-- Brand biome and export flows
+- Real social presence
+- Multi-room orchestration
+- Presence-driven world recompute loops
+
+## v3
+
+- Temporal echoes
+- Memory persistence beyond live sessions
+- Encrypted recall and authored time layers
 

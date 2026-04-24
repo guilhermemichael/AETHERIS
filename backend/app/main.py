@@ -1,37 +1,37 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from app.api import admin, sessions, world
+from app.api import admin, sessions, world, ws
 from app.core.config import get_settings
+from app.core.errors import install_exception_handlers
 from app.core.logging import configure_logging
-from app.repositories.session_repo import SessionRepository
-from app.services.seed_service import SeedService
-from app.services.session_service import SessionService
-from app.services.world_engine import WorldEngine
+from app.core.security import RateLimitMiddleware, SecurityHeadersMiddleware
+from app.lifespan import create_lifespan
 
-configure_logging()
-settings = get_settings()
 
-app = FastAPI(title=settings.app_name)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+def create_app() -> FastAPI:
+    settings = get_settings()
+    configure_logging(settings.log_level)
+    app = FastAPI(title=settings.app_name, lifespan=create_lifespan(settings))
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.trusted_hosts)
+    app.add_middleware(SecurityHeadersMiddleware)
+    app.add_middleware(RateLimitMiddleware)
+    install_exception_handlers(app)
 
-repository = SessionRepository()
-seed_service = SeedService()
-world_engine = WorldEngine()
-app.state.session_service = SessionService(
-    settings=settings,
-    repository=repository,
-    seed_service=seed_service,
-    world_engine=world_engine,
-)
+    app.include_router(admin.router, prefix=settings.api_v1_prefix)
+    app.include_router(sessions.router, prefix=settings.api_v1_prefix)
+    app.include_router(world.router, prefix=settings.api_v1_prefix)
+    app.include_router(ws.router, prefix=settings.api_v1_prefix)
+    return app
 
-app.include_router(admin.router, prefix=settings.api_v1_prefix)
-app.include_router(sessions.router, prefix=settings.api_v1_prefix)
-app.include_router(world.router, prefix=settings.api_v1_prefix)
+
+app = create_app()
 

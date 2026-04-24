@@ -7,10 +7,10 @@ def test_seed_generation_is_deterministic() -> None:
         session_id="sess_fixed",
         locale="en-US",
         device_class="desktop",
+        render_mode="webgpu",
         prefers_reduced_motion=False,
-        wants_audio=True,
-        wants_biometrics=False,
-        time_bucket="2026-04-21T13",
+        timezone_offset_minutes=-180,
+        time_bucket="2026-04-24T13",
     )
     service = SeedService()
 
@@ -19,4 +19,3 @@ def test_seed_generation_is_deterministic() -> None:
 
     assert seed_a == seed_b
     assert len(seed_a) == 64
-

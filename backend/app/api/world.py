@@ -1,19 +1,26 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends
 
-from app.api.deps import get_session_service
-from app.schemas.world import WorldStateSchema
+from app.api.deps import get_current_session, get_session_service
+from app.repositories.protocols import SessionRecord
+from app.schemas.world import WorldRecomputeRequest, WorldStateSchema
 from app.services.session_service import SessionService
 
 router = APIRouter(prefix="/world", tags=["world"])
 
 
 @router.get("/state", response_model=WorldStateSchema)
-def get_world_state(
-    session_id: str | None = Query(default=None),
+async def get_world_state(
+    current_session: SessionRecord = Depends(get_current_session),
     session_service: SessionService = Depends(get_session_service),
 ) -> WorldStateSchema:
-    try:
-        return session_service.get_world_state(session_id)
-    except KeyError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found") from exc
+    return await session_service.get_world_state(current_session)
+
+
+@router.post("/recompute", response_model=WorldStateSchema)
+async def recompute_world(
+    payload: WorldRecomputeRequest,
+    current_session: SessionRecord = Depends(get_current_session),
+    session_service: SessionService = Depends(get_session_service),
+) -> WorldStateSchema:
+    return await session_service.recompute_world(record=current_session, payload=payload)
 

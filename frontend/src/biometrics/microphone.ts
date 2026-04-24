@@ -4,41 +4,6 @@ export interface MicrophoneController {
   stop: () => void;
 }
 
-interface MicrophoneCapability {
-  requestable: boolean;
-  reason: string | null;
-}
-
-const TRUSTED_LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
-
-export function getMicrophoneCapability(
-  currentWindow: Pick<Window, "isSecureContext" | "location" | "navigator"> = window,
-): MicrophoneCapability {
-  const hostname = currentWindow.location?.hostname ?? "";
-  const secureContext =
-    currentWindow.isSecureContext || TRUSTED_LOCAL_HOSTS.has(hostname.toLowerCase());
-  const supported = Boolean(currentWindow.navigator.mediaDevices?.getUserMedia);
-
-  if (!supported) {
-    return {
-      requestable: false,
-      reason: "Microphone capture is not supported in this browser.",
-    };
-  }
-
-  if (!secureContext) {
-    return {
-      requestable: false,
-      reason: "Microphone capture requires HTTPS or localhost.",
-    };
-  }
-
-  return {
-    requestable: true,
-    reason: null,
-  };
-}
-
 export function explainMicrophoneError(error: unknown): string {
   if (error instanceof DOMException) {
     if (error.name === "NotAllowedError") {
@@ -61,15 +26,9 @@ export function explainMicrophoneError(error: unknown): string {
 }
 
 export async function startMicrophoneCapture(
+  stream: MediaStream,
   onBreathRate: (breathRate: number) => void,
 ): Promise<MicrophoneController> {
-  const capability = getMicrophoneCapability();
-
-  if (!capability.requestable) {
-    throw new Error(capability.reason ?? "Microphone capture is not available.");
-  }
-
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   const audioContext = new AudioContext();
 
   if (audioContext.state === "suspended") {
