@@ -14,6 +14,11 @@ interface RenderViewportProps {
 export function RenderViewport({ worldState, localInput, onRendererMode }: RenderViewportProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const engineRef = useRef<AetherisRenderEngine | null>(null);
+  const latestInputRef = useRef(localInput);
+
+  useEffect(() => {
+    latestInputRef.current = localInput;
+  }, [localInput]);
 
   useEffect(() => {
     if (!containerRef.current || !worldState) {
@@ -25,18 +30,25 @@ export function RenderViewport({ worldState, localInput, onRendererMode }: Rende
     let isActive = true;
 
     const container = containerRef.current;
+    console.info("[AETHERIS] RenderViewport mounted");
 
     void engine
       .mount(container, {
         worldState,
-        localInput,
+        localInput: latestInputRef.current,
         viewport: readViewport(container),
       })
       .then((mode) => {
-      if (isActive) {
-        onRendererMode(mode);
-      }
-    });
+        if (isActive) {
+          onRendererMode(mode);
+        }
+      })
+      .catch((error) => {
+        console.error("[AETHERIS] renderer mount failed", error);
+        if (isActive) {
+          onRendererMode("static");
+        }
+      });
 
     const resizeObserver = new ResizeObserver(() => {
       if (!engineRef.current || !containerRef.current || !worldState) {
@@ -44,7 +56,7 @@ export function RenderViewport({ worldState, localInput, onRendererMode }: Rende
       }
       engineRef.current.update({
         worldState,
-        localInput,
+        localInput: latestInputRef.current,
         viewport: readViewport(containerRef.current),
       });
     });
@@ -56,7 +68,7 @@ export function RenderViewport({ worldState, localInput, onRendererMode }: Rende
       engine.dispose();
       engineRef.current = null;
     };
-  }, [localInput, onRendererMode, worldState]);
+  }, [onRendererMode, worldState]);
 
   useEffect(() => {
     if (!worldState || !containerRef.current) {

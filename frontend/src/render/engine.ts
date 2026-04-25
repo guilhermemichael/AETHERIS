@@ -19,7 +19,9 @@ export class AetherisRenderEngine {
   private soundscape = new ReactiveSoundscape();
 
   async mount(container: HTMLElement, input: RenderInput): Promise<RendererMode> {
+    console.info("[AETHERIS] renderer boot start");
     this.rendererMode = resolveRendererMode(detectRendererCapabilities(container.ownerDocument));
+    console.info("[AETHERIS] renderer backend selected", this.rendererMode);
     this.input = input;
     this.controller = new ImmersiveSceneController(container, this.rendererMode, input.worldState);
     await this.controller.mount(input.viewport);
@@ -28,6 +30,7 @@ export class AetherisRenderEngine {
       await this.soundscape.start();
     }
     this.frameId = window.requestAnimationFrame(this.frame);
+    console.info("[AETHERIS] renderer boot success");
     return this.rendererMode;
   }
 

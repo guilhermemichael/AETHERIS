@@ -150,6 +150,7 @@ test("keeps the consent shell contained and reaches world mode with mocked media
     consentViewportMetrics.rootHeight,
   );
 
+  await page.getByLabel("Camera-based local framing").click();
   await page.getByRole("button", { name: "Begin calibration" }).click();
   await expect(page.locator(".detail-panel")).toBeVisible();
 });

@@ -10,6 +10,7 @@ AETHERIS is now on the `v1.5` milestone: immersive core plus a production spine.
 - Typed OpenAPI export plus generated TypeScript contracts in `frontend/src/generated/api-types.ts`.
 - WebSocket foundation with auth, room join, heartbeat, basic broadcast, and disconnect cleanup.
 - Real camera and microphone permission flow from the consent CTA.
+- Ritual-safe fallback when session bootstrap, consent sync, or renderer startup degrade locally.
 - Modular renderer boundary fed only by `worldState`, `localInput`, and `viewport`.
 - Health, readiness, metrics, Docker Compose, stronger CI, and smoke coverage.
 
@@ -27,6 +28,29 @@ AETHERIS is now on the `v1.5` milestone: immersive core plus a production spine.
 
 ## Local development
 
+### Quick start
+
+```bash
+cd C:\Users\guilh\PROJETOS\AETHERIS
+docker compose up -d
+
+cd backend
+uv sync --dev
+uv run alembic upgrade head
+
+cd ..
+npm install
+npm run dev
+```
+
+`npm run dev` from the repository root starts the FastAPI backend and the Vite frontend together. Docker Compose keeps Postgres and Redis available for the production-shaped local flow.
+
+Local URLs after boot:
+
+- Frontend: `http://127.0.0.1:5173`
+- Backend docs: `http://127.0.0.1:8000/docs`
+- Healthcheck: `http://127.0.0.1:8000/api/v1/admin/health`
+
 ### 1. Infrastructure
 
 ```bash
@@ -34,7 +58,7 @@ cd C:\Users\guilh\PROJETOS\AETHERIS
 docker compose up -d
 ```
 
-### 2. Backend
+### 2. Backend setup
 
 ```bash
 cd backend
@@ -43,9 +67,9 @@ uv run alembic upgrade head
 uv run uvicorn app.main:app --reload
 ```
 
-Environment defaults live in `backend/.env.example`.
+Environment defaults live in `backend/.env.example`. Copy them to `backend/.env` when you need an explicit local override.
 
-### 3. Frontend
+### 3. Frontend setup
 
 ```bash
 cd C:\Users\guilh\PROJETOS\AETHERIS
@@ -55,7 +79,13 @@ npm run dev --workspace frontend
 
 The frontend defaults to `VITE_API_BASE_URL=http://127.0.0.1:8000`.
 
-### 4. Run contracts sync
+### 4. Resilience notes
+
+- If the backend session bootstrap fails, the frontend continues in a ritual-safe local mode instead of trapping the user in the consent flow.
+- If consent sync or realtime presence fail, the world still opens and surfaces a degraded-mode notice.
+- If WebGPU or WebGL renderer creation fails, the viewport falls back to the static ritual shell.
+
+### 5. Run contracts sync
 
 ```bash
 cd backend

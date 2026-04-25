@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   initSessionMock,
@@ -74,6 +74,9 @@ import { useUiStore } from "../state/uiStore";
 describe("App consent handshake", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(console, "info").mockImplementation(() => undefined);
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     initSessionMock.mockResolvedValue({
       session_id: "51d13dbf-8352-4c8b-a500-fcbf378ab6eb",
@@ -202,16 +205,20 @@ describe("App consent handshake", () => {
 
     await waitFor(() => expect(requestMediaPermissionsMock).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(initSessionMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(updateConsentMock).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(startMicrophoneCaptureMock).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(startCameraCaptureMock).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(updateConsentMock).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(wsConnectMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId("render-viewport")).toBeInTheDocument());
 
     expect(requestMediaPermissionsMock.mock.invocationCallOrder[0]).toBeLessThan(
       initSessionMock.mock.invocationCallOrder[0],
     );
     expect(initSessionMock.mock.invocationCallOrder[0]).toBeLessThan(
       updateConsentMock.mock.invocationCallOrder[0],
+    );
+    expect(updateConsentMock.mock.invocationCallOrder[0]).toBeLessThan(
+      startCameraCaptureMock.mock.invocationCallOrder[0],
     );
     expect(updateConsentMock).toHaveBeenCalledWith(
       "token",
@@ -220,5 +227,77 @@ describe("App consent handshake", () => {
         camera: true,
       }),
     );
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("continues into world mode when camera bootstrap fails after permission", async () => {
+    requestMediaPermissionsMock.mockResolvedValueOnce({
+      microphone: {
+        granted: false,
+        stream: null,
+        error: null,
+      },
+      camera: {
+        granted: true,
+        stream: new MediaStream(),
+        error: null,
+      },
+    });
+    updateConsentMock.mockResolvedValueOnce({
+      session_id: "51d13dbf-8352-4c8b-a500-fcbf378ab6eb",
+      consent: {
+        microphone: false,
+        camera: true,
+        local_biometrics: false,
+        audio: true,
+        presence: true,
+      },
+      world_state: {
+        mode: "bloom",
+        seed: "seed",
+        entropy: 0.22,
+        fog_density: 0.41,
+        bloom_strength: 0.33,
+        particle_density: 0.42,
+        gravity: 0.39,
+        color_temperature: 0.31,
+        palette: ["#000000", "#050507", "#72F7FF", "#8A5CFF", "#5FFFC2"],
+        typography_weight: 460,
+        audio_intensity: 0.22,
+      },
+    });
+    startCameraCaptureMock.mockRejectedValueOnce(new Error("camera boot failed"));
+
+    render(<App />);
+    await act(async () => {
+      useUiStore.getState().setPhase("consent");
+    });
+
+    fireEvent.click(screen.getByLabelText("Camera-based local framing"));
+    fireEvent.click(screen.getByRole("button", { name: "Begin calibration" }));
+
+    await waitFor(() => expect(initSessionMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(updateConsentMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(startCameraCaptureMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId("render-viewport")).toBeInTheDocument());
+    expect(screen.getByText("Immersive core, production spine, no decorative chaos.")).toBeInTheDocument();
+  });
+
+  it("falls back into ritual-safe mode when session bootstrap fails", async () => {
+    initSessionMock.mockRejectedValueOnce(new Error("backend unavailable"));
+
+    render(<App />);
+    await act(async () => {
+      useUiStore.getState().setPhase("consent");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Begin calibration" }));
+
+    await waitFor(() => expect(initSessionMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByText("Session services lost cohesion.")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("render-viewport")).toBeInTheDocument());
   });
 });

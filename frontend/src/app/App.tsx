@@ -9,7 +9,7 @@ import {
 } from "react";
 
 import { initSession, updateConsent } from "../api/sessions";
-import type { ConsentState, SessionInitRequest } from "../api/contracts";
+import type { ConsentState, SessionInitRequest, WorldState } from "../api/contracts";
 import { ConsentGate } from "./ConsentGate";
 import { siteManifest } from "../content/siteManifest";
 import { startCameraCapture } from "../biometrics/camera";
@@ -26,6 +26,7 @@ import {
   decayLocalInput,
 } from "../biometrics/localInput";
 import { explainMicrophoneError, startMicrophoneCapture } from "../biometrics/microphone";
+import type { PermissionState } from "../state/inputStore";
 import { useInputStore } from "../state/inputStore";
 import { useSessionStore } from "../state/sessionStore";
 import { defaultLocalInputSnapshot, useWorldStore } from "../state/worldStore";
@@ -57,7 +58,14 @@ export function App() {
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const { consent, hydrateFromInit, applyConsent, setWebsocketConnected, clearSession } =
+  const {
+    consent,
+    hydrateFromInit,
+    applyConsent,
+    setLocalConsent,
+    setWebsocketConnected,
+    clearSession,
+  } =
     useSessionStore();
   const { worldState, localInput, mergeLocalInput, setWorldState, setRendererMode } =
     useWorldStore();
@@ -75,8 +83,17 @@ export function App() {
 
   useEffect(() => {
     setPhase("void");
-    pulseTimerRef.current = window.setTimeout(() => setPhase("pulse"), 280);
-    consentTimerRef.current = window.setTimeout(() => setPhase("consent"), 1120);
+    pulseTimerRef.current = window.setTimeout(() => {
+      if (useUiStore.getState().phase === "void") {
+        setPhase("pulse");
+      }
+    }, 280);
+    consentTimerRef.current = window.setTimeout(() => {
+      const currentPhase = useUiStore.getState().phase;
+      if (currentPhase === "void" || currentPhase === "pulse") {
+        setPhase("consent");
+      }
+    }, 1120);
 
     return () => {
       if (pulseTimerRef.current !== null) {
@@ -149,43 +166,55 @@ export function App() {
     setNotice(null);
     setPhase("authenticating");
     wsRef.current?.close();
-
-    let nextMicrophone: { stop: () => void } | null = null;
-    let nextCamera: { stop: () => void } | null = null;
+    setWebsocketConnected(false);
+    stopControllers(microphoneRef.current, cameraRef.current);
+    microphoneRef.current = null;
+    cameraRef.current = null;
 
     try {
+      console.info("[AETHERIS] consent accepted", preferences);
       const permissionResult = await requestMediaPermissions(preferences);
-      setMicrophoneState(permissionResult.microphone.granted ? "granted" : "denied");
-      setCameraState(permissionResult.camera.granted ? "granted" : "denied");
+      console.info("[AETHERIS] media result", permissionResult);
+      setMicrophoneState(
+        resolvePermissionState(
+          preferences.microphone,
+          microphoneCapability.requestable,
+          permissionResult.microphone.granted,
+        ),
+      );
+      setCameraState(
+        resolvePermissionState(
+          preferences.camera,
+          cameraCapability.requestable,
+          permissionResult.camera.granted,
+        ),
+      );
 
-      if (permissionResult.microphone.stream) {
-        nextMicrophone = await startMicrophoneCapture(permissionResult.microphone.stream, (value) => {
-          mergeLocalInput({ breathRate: value });
-        });
-      }
-
-      if (permissionResult.camera.stream) {
-        nextCamera = await startCameraCapture(permissionResult.camera.stream, (value) => {
-          mergeLocalInput({ cameraEnergy: value, attention: Math.min(1, 0.62 + value * 0.3) });
-        });
-      }
-
+      console.info("[AETHERIS] session init start");
       const initResponse = await initSession(buildInitialRequest());
+      console.info("[AETHERIS] session init done", initResponse);
       hydrateFromInit(initResponse);
       setWorldState(initResponse.world_state);
 
       const consentState = buildConsentState(preferences, permissionResult);
-      const consentResponse = await updateConsent(initResponse.access_token, consentState);
+      let nextWorldState = initResponse.world_state;
+      console.info("[AETHERIS] world state", initResponse.world_state);
 
-      microphoneRef.current?.stop();
-      cameraRef.current?.stop();
-      microphoneRef.current = nextMicrophone;
-      cameraRef.current = nextCamera;
-      nextMicrophone = null;
-      nextCamera = null;
+      try {
+        console.info("[AETHERIS] consent sync start", consentState);
+        const consentResponse = await updateConsent(initResponse.access_token, consentState);
+        applyConsent(consentResponse);
+        nextWorldState = consentResponse.world_state;
+        setWorldState(consentResponse.world_state);
+      } catch (caughtError) {
+        console.warn("[AETHERIS] consent sync failed, continuing locally", caughtError);
+        setLocalConsent(consentState);
+        setNotice((current) =>
+          joinMessages(current, "Consent sync is unavailable. Continuing with local-only state."),
+        );
+      }
 
-      applyConsent(consentResponse);
-      setWorldState(consentResponse.world_state);
+      console.info("[AETHERIS] world state resolved", nextWorldState);
       mergeLocalInput({
         ...defaultLocalInputSnapshot,
         breathRate: useWorldStore.getState().localInput.breathRate,
@@ -196,8 +225,62 @@ export function App() {
       if (permissionNotice) {
         setNotice(permissionNotice);
       }
+      console.info("[AETHERIS] switching phase to world");
+      setPhase("world");
+      console.info("[AETHERIS] mounting renderer", Boolean(nextWorldState));
 
-      const wsClient = new AetherisWsClient(initResponse.access_token, {
+      void startRealtimeLayer(initResponse.access_token, initResponse.room_id);
+      void startLocalControllers(permissionResult);
+    } catch (caughtError) {
+      console.error("[AETHERIS] bootstrap failed", caughtError);
+      wsRef.current?.close();
+      setWebsocketConnected(false);
+      clearSession();
+      setWorldState(createRitualSafeWorldState());
+      mergeLocalInput({ ...defaultLocalInputSnapshot });
+      setNotice("Session services are unavailable. Continuing in ritual-safe mode.");
+      setError(describeBootstrapError(caughtError));
+      setPhase("world");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const startLocalControllers = async (
+    permissionResult: Awaited<ReturnType<typeof requestMediaPermissions>>,
+  ) => {
+    if (permissionResult.microphone.stream) {
+      try {
+        const controller = await startMicrophoneCapture(permissionResult.microphone.stream, (value) => {
+          mergeLocalInput({ breathRate: value });
+        });
+        microphoneRef.current?.stop();
+        microphoneRef.current = controller;
+      } catch (caughtError) {
+        console.warn("[AETHERIS] microphone bootstrap failed", caughtError);
+        setNotice((current) => joinMessages(current, explainMicrophoneError(caughtError)));
+      }
+    }
+
+    if (permissionResult.camera.stream) {
+      try {
+        const controller = await startCameraCapture(permissionResult.camera.stream, (value) => {
+          mergeLocalInput({ cameraEnergy: value, attention: Math.min(1, 0.62 + value * 0.3) });
+        });
+        cameraRef.current?.stop();
+        cameraRef.current = controller;
+      } catch (caughtError) {
+        console.warn("[AETHERIS] camera bootstrap failed", caughtError);
+        setNotice((current) =>
+          joinMessages(current, "Camera input is unavailable. Continuing without local framing."),
+        );
+      }
+    }
+  };
+
+  const startRealtimeLayer = async (token: string, roomId: string) => {
+    try {
+      const wsClient = new AetherisWsClient(token, {
         onOpen: () => setWebsocketConnected(true),
         onClose: () => setWebsocketConnected(false),
         onMessage: (message) => {
@@ -212,15 +295,13 @@ export function App() {
         },
       });
       wsRef.current = wsClient;
-      wsClient.connect({ roomId: initResponse.room_id });
-
-      setPhase("world");
+      wsClient.connect({ roomId });
     } catch (caughtError) {
-      stopControllers(nextMicrophone, nextCamera);
-      setPhase("consent");
-      setError(describeAppError(caughtError, preferences));
-    } finally {
-      setSubmitting(false);
+      console.warn("[AETHERIS] realtime bootstrap failed", caughtError);
+      setWebsocketConnected(false);
+      setNotice((current) =>
+        joinMessages(current, "Presence sync is unavailable. Continuing in local mode."),
+      );
     }
   };
 
@@ -280,6 +361,14 @@ export function App() {
 
       {phase === "world" ? (
         <>
+          {error ? (
+            <section className="error-card" role="status">
+              <p className="eyebrow">Ritual-safe mode</p>
+              <h2>Session services lost cohesion.</h2>
+              <p>{error}</p>
+            </section>
+          ) : null}
+
           <section className="content-constellation" aria-label="AETHERIS content nodes">
             {siteManifest.map((node) => (
               <button
@@ -327,6 +416,43 @@ function describeConsent(consent: ConsentState) {
   return "Interaction-only mode";
 }
 
+function resolvePermissionState(
+  preferred: boolean,
+  requestable: boolean,
+  granted: boolean,
+): PermissionState {
+  if (!preferred) {
+    return "idle";
+  }
+  if (!requestable) {
+    return "unsupported";
+  }
+  return granted ? "granted" : "denied";
+}
+
+function joinMessages(...messages: Array<string | null | undefined>): string | null {
+  const collected = messages
+    .map((message) => message?.trim())
+    .filter((message): message is string => Boolean(message));
+  return collected.length > 0 ? collected.join(" ") : null;
+}
+
+function createRitualSafeWorldState(): WorldState {
+  return {
+    mode: "bloom",
+    seed: "ritual-safe-local",
+    entropy: 0.18,
+    fog_density: 0.4,
+    bloom_strength: 0.22,
+    particle_density: 0.2,
+    gravity: 0.34,
+    color_temperature: 0.28,
+    typography_weight: 420,
+    audio_intensity: 0.1,
+    palette: ["#000000", "#050507", "#72f7ff", "#8a5cff", "#5fffc2"],
+  };
+}
+
 function resolveDeviceClass(): SessionInitRequest["device_class"] {
   if (typeof window === "undefined") {
     return "unknown";
@@ -365,12 +491,9 @@ function buildInitialRequest(): SessionInitRequest {
   };
 }
 
-function describeAppError(error: unknown, preferences: ConsentPreferences): string {
-  if (preferences.microphone) {
-    return explainMicrophoneError(error);
+function describeBootstrapError(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return `${error.message} The environment is continuing in ritual-safe mode.`;
   }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return "Unable to complete the consent handshake.";
+  return "The backend did not complete the session bootstrap. The environment is continuing in ritual-safe mode.";
 }

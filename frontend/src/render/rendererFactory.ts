@@ -24,9 +24,17 @@ export async function createRenderer(mode: RendererMode): Promise<RuntimeRendere
         return new module.WebGPURenderer({ antialias: true, alpha: true });
       }
     } catch {
-      return new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      try {
+        return new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      } catch {
+        return null;
+      }
     }
   }
 
-  return new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  try {
+    return new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  } catch {
+    return null;
+  }
 }

@@ -22,6 +22,7 @@ interface SessionStore extends SessionSnapshot {
   hydrateFromInit: (payload: SessionInitResponse) => void;
   hydrateFromMe: (payload: SessionMeResponse) => void;
   applyConsent: (payload: ConsentUpdateResponse) => void;
+  setLocalConsent: (consent: ConsentState) => void;
   setWebsocketConnected: (connected: boolean) => void;
   clearSession: () => void;
 }
@@ -62,6 +63,10 @@ export const useSessionStore = create<SessionStore>((set) => ({
   applyConsent: (payload) =>
     set({
       consent: payload.consent,
+    }),
+  setLocalConsent: (consent) =>
+    set({
+      consent,
     }),
   setWebsocketConnected: (websocketConnected) => set({ websocketConnected }),
   clearSession: () =>

@@ -50,15 +50,19 @@ export class ImmersiveSceneController {
 
   async mount(viewport: ViewportState) {
     if (this.mode === "static") {
-      const fallback = document.createElement("div");
-      fallback.className = "static-ritual";
-      this.container.appendChild(fallback);
-      this.staticFallback = fallback;
+      this.mountStaticFallback();
       return;
     }
 
-    this.renderer = await createRenderer(this.mode);
+    try {
+      this.renderer = await createRenderer(this.mode);
+    } catch {
+      this.mountStaticFallback();
+      return;
+    }
+
     if (!this.renderer) {
+      this.mountStaticFallback();
       return;
     }
     this.composer = new SceneComposer(this.renderer);
@@ -114,5 +118,15 @@ export class ImmersiveSceneController {
     this.particleSystem.dispose();
     this.pulse.geometry.dispose();
     this.pulse.material.dispose();
+  }
+
+  private mountStaticFallback() {
+    if (this.staticFallback) {
+      return;
+    }
+    const fallback = document.createElement("div");
+    fallback.className = "static-ritual";
+    this.container.appendChild(fallback);
+    this.staticFallback = fallback;
   }
 }

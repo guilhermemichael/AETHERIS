@@ -12,7 +12,12 @@ export async function startCameraCapture(
   video.playsInline = true;
 
   try {
-    await video.play();
+    await Promise.race([
+      video.play().catch(() => undefined),
+      new Promise<void>((resolve) => {
+        window.setTimeout(resolve, 240);
+      }),
+    ]);
   } catch {
     onCameraEnergy(0.35);
   }
